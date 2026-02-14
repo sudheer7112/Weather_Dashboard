@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Weather Intelligence</title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" />
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+
+    <style>
+        :root {
+            --primary: #0b57d0;
+            --surface: #ffffff;
+            --surface-container: #f0f4f8; 
+            --text-main: #1f1f1f;
+            --text-sub: #444746;
+            --outline: #e0e0e0;
+            --shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Google Sans', sans-serif; }
+        
+        body {
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            overflow: hidden; 
+            background-color: var(--surface-container);
+            color: var(--text-main);
+        }
+
+        /* --- SIDEBAR --- */
+        .sidebar {
+            width: 450px;
+            min-width: 320px;
+            max-width: 800px;
+            height: 100%;
+            overflow-y: auto;
+            background: var(--surface-container);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            z-index: 20;
+            position: relative;
+        }
+
+        /* --- RESIZER --- */
+        .resizer {
+            width: 8px;
+            height: 100%;
+            background: #dfe3e7;
+            cursor: col-resize;
+            transition: background 0.2s;
+            z-index: 30;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .resizer:hover, .resizer.dragging { background: var(--primary); }
+        .resizer::after {
+            content: "";
+            height: 24px;
+            width: 2px;
+            background: #bbb;
+            border-radius: 1px;
+            box-shadow: 3px 0 0 #bbb;
+        }
+        .resizer:hover::after { background: #fff; box-shadow: 3px 0 0 #fff; }
+
+        /* --- MAP --- */
+        .map-wrapper {
+            flex: 1; 
+            height: 100%;
+            position: relative;
+            background: #e5e5e5;
+            z-index: 10;
+        }
+        #map { height: 100%; width: 100%; outline: none; }
+
+        /* --- UI COMPONENTS --- */
+        .search-container { position: relative; }
+        .search-bar {
+            background: var(--surface);
+            height: 52px;
+            border-radius: 100px;
+            display: flex;
+            align-items: center;
+            padding: 0 8px 0 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            transition: 0.2s;
+            border: 1px solid transparent;
+        }
+        .search-bar:focus-within { box-shadow: var(--shadow); border-color: #d0d0d0; background: #fff; }
+        .search-input { flex: 1; border: none; outline: none; font-size: 15px; color: var(--text-main); }
+        
+        .icon-btn {
+            width: 40px; height: 40px; border-radius: 50%; border: none; background: transparent;
+            cursor: pointer; color: var(--text-sub); display: flex; align-items: center; justify-content: center;
+            transition: 0.2s;
+        }
+        .icon-btn:hover { background: #f0f0f0; color: var(--text-main); }
+
+        .suggestions {
+            position: absolute; top: 58px; left: 0; right: 0;
+            background: var(--surface); border-radius: 16px;
+            box-shadow: var(--shadow); overflow: hidden; display: none; z-index: 100;
+        }
+        .suggestion-item {
+            padding: 12px 20px; cursor: pointer; display: flex; align-items: center; gap: 10px;
+            font-size: 14px; transition: 0.1s;
+        }
+        .suggestion-item:hover { background: #f5f5f5; }
+
+        .card {
+            background: var(--surface);
+            border-radius: 20px;
+            padding: 24px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            transition: transform 0.2s;
+        }
+        
+        .weather-header { display: flex; justify-content: center; text-align: center; margin-bottom: 16px; }
+        .location-info h2 { font-size: 22px; font-weight: 500; line-height: 1.2; }
+        .location-info p { font-size: 13px; color: var(--text-sub); margin-top: 4px; }
+        
+        .main-display { display: flex; align-items: center; gap: 16px; justify-content: center; padding: 10px 0; }
+        .temp-huge { font-size: 72px; font-weight: 400; line-height: 1; letter-spacing: -3px; }
+        .icon-huge { font-size: 64px; color: var(--primary); }
+        .desc-pill {
+            background: #eef2f6; color: var(--text-sub); padding: 6px 16px; 
+            border-radius: 100px; font-size: 14px; font-weight: 500; display: inline-block;
+            margin: 0 auto; text-transform: capitalize;
+        }
+
+        .details-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+        .detail-box {
+            background: #f8f9fa; padding: 12px; border-radius: 16px;
+            text-align: center; display: flex; flex-direction: column; align-items: center; gap: 4px;
+        }
+        .detail-val { font-weight: 600; font-size: 15px; }
+        .detail-lbl { font-size: 11px; color: var(--text-sub); }
+        .detail-icon { font-size: 20px; color: var(--primary); margin-bottom: 4px; }
+
+        .hourly-scroll { display: flex; overflow-x: auto; gap: 8px; padding-bottom: 4px; scrollbar-width: thin; }
+        .hourly-item {
+            min-width: 60px; padding: 12px 0; text-align: center; border-radius: 12px;
+            display: flex; flex-direction: column; align-items: center; gap: 6px;
+        }
+        .hourly-item:hover { background: #f5f5f5; }
+
+        .daily-list { display: flex; flex-direction: column; }
+        .daily-row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 12px 4px; border-bottom: 1px solid #f0f0f0; font-size: 14px;
+        }
+        .daily-row:last-child { border-bottom: none; }
+
+        .controls { display: flex; justify-content: center; gap: 8px; margin-top: 8px; }
+        .chip {
+            padding: 6px 14px; border-radius: 8px; border: 1px solid #e0e0e0;
+            background: transparent; font-size: 13px; cursor: pointer; color: var(--text-sub);
+        }
+        .chip.active { background: #d3e3fd; color: #041e49; border-color: transparent; font-weight: 600; }
+
+        /* Skeleton Loading */
+        .skeleton { background: linear-gradient(90deg, #f0f0f0 25%, #f8f8f8 50%, #f0f0f0 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; color: transparent !important; border-radius: 6px; }
+        .skeleton-icon { opacity: 0.1; }
+        @keyframes shimmer { 0% {background-position: 200% 0;} 100% {background-position: -200% 0;} }
+
+        /* Resizing overlay */
+        .resizing-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            z-index: 9999; cursor: col-resize; display: none;
+        }
+        body.is-resizing .resizing-overlay { display: block; }
+        body.is-resizing { user-select: none; }
+
+        @media(max-width: 768px) {
+            body { flex-direction: column; overflow: auto; }
+            .sidebar { width: 100% !important; height: auto; order: 2; overflow: visible; }
+            .resizer { display: none; }
+            .map-wrapper { height: 300px; order: 1; flex: none; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar" id="sidebar">
+        
+        <div class="search-container">
+            <div class="search-bar">
+                <span class="material-symbols-rounded" style="color:#aaa; margin-right:8px">search</span>
+                <input type="text" class="search-input" id="inputCity" placeholder="Search city..." autocomplete="off">
+                <button class="icon-btn" onclick="getCurrentLocation()"><span class="material-symbols-rounded">my_location</span></button>
+            </div>
+            <div class="suggestions" id="suggestions"></div>
+            
+            <div class="controls">
+                <button class="chip active" onclick="setUnit('metric', this)">Metric °C</button>
+                <button class="chip" onclick="setUnit('imperial', this)">Imperial °F</button>
+            </div>
+        </div>
+
+        <div class="card" style="text-align: center;">
+            <div class="weather-header">
+                <div class="location-info">
+                    <h2 id="locName">--</h2>
+                    <p id="locSub">Select location</p>
+                </div>
+            </div>
+            <div class="main-display">
+                <span class="material-symbols-rounded icon-huge" id="curIcon">cloud_queue</span>
+                <span class="temp-huge" id="curTemp">--</span>
+            </div>
+            <div class="desc-pill" id="curDesc">--</div>
+        </div>
+
+        <div class="card">
+            <h4 style="font-size:14px; margin-bottom:12px; color:#555">Current Details</h4>
+            <div class="details-grid">
+                <div class="detail-box">
+                    <span class="material-symbols-rounded detail-icon">thermostat</span>
+                    <span class="detail-val" id="val-feels">--</span><span class="detail-lbl">Feels Like</span>
+                </div>
+                <div class="detail-box">
+                    <span class="material-symbols-rounded detail-icon">water_drop</span>
+                    <span class="detail-val" id="val-humidity">--</span><span class="detail-lbl">Humidity</span>
+                </div>
+                <div class="detail-box">
+                    <span class="material-symbols-rounded detail-icon">air</span>
+                    <span class="detail-val" id="val-wind">--</span><span class="detail-lbl">Wind</span>
+                </div>
+                <div class="detail-box">
+                    <span class="material-symbols-rounded detail-icon">visibility</span>
+                    <span class="detail-val" id="val-vis">--</span><span class="detail-lbl">Visibility</span>
+                </div>
+                <div class="detail-box">
+                    <span class="material-symbols-rounded detail-icon">compress</span>
+                    <span class="detail-val" id="val-pressure">--</span><span class="detail-lbl">Pressure</span>
+                </div>
+                <div class="detail-box">
+                    <span class="material-symbols-rounded detail-icon">wb_sunny</span>
+                    <span class="detail-val" id="val-uv">--</span><span class="detail-lbl">UV Index</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h4 style="font-size:14px; margin-bottom:12px; color:#555">24-Hour Forecast</h4>
+            <div class="hourly-scroll" id="hourlyList"></div>
+        </div>
+
+        <div class="card">
+            <h4 style="font-size:14px; margin-bottom:12px; color:#555">7-Day Forecast</h4>
+            <div class="daily-list" id="dailyList"></div>
+        </div>
+    </div>
+
+    <div class="resizer" id="resizer"></div>
+    <div class="resizing-overlay"></div>
+
+    <div class="map-wrapper">
+        <div id="map"></div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+    <script>
+        // --- CONFIG ---
+        let unit = 'metric';
+        let map, marker;
+        const el = id => document.getElementById(id);
+        const W_CODES = {0:{t:"Clear",i:"wb_sunny"},1:{t:"Mainly Clear",i:"wb_twilight"},2:{t:"Partly Cloudy",i:"partly_cloudy_day"},3:{t:"Overcast",i:"cloud"},45:{t:"Fog",i:"foggy"},51:{t:"Drizzle",i:"rainy_light"},61:{t:"Rain",i:"rainy"},71:{t:"Snow",i:"weather_snowy"},95:{t:"Thunderstorm",i:"thunderstorm"}};
+        const getW = c => W_CODES[c] || {t:"Unknown",i:"cloud"};
+
+        window.onload = () => {
+            renderPlaceholders();
+            initMap();
+            initResizer();
+            el("locName").innerText = "Ready";
+            el("locSub").innerText = "Click map or search";
+        };
+
+        // --- MAP & ANIMATION ---
+        function initMap() {
+            // Start at a zoomed out view of the world or a specific default
+            map = L.map('map', { zoomControl: false }).setView([20, 0], 2); 
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
+            L.control.zoom({ position: 'topright' }).addTo(map);
+
+            // Parallel Fetch on Map Click
+            map.on('click', (e) => handleLocationUpdate(e.latlng.lat, e.latlng.lng, true));
+        }
+
+        async function handleLocationUpdate(lat, lng, isMapClick) {
+            setLoading(true);
+            
+            // Marker
+            if(marker) map.removeLayer(marker);
+            marker = L.marker([lat, lng]).addTo(map);
+
+            // ANIMATION LOGIC:
+            // If it came from Search/Suggestion, we "Fly" there.
+            if(!isMapClick) {
+                map.flyTo([lat, lng], 12, {
+                    animate: true,
+                    duration: 2.0 // Seconds (Slower = more dramatic flight)
+                });
+            }
+
+            try {
+                // START PARALLEL REQUESTS
+                const weatherPromise = fetchWeather(lat, lng);
+                const addressPromise = fetchPreciseAddress(lat, lng);
+
+                const [weatherData, addressData] = await Promise.all([weatherPromise, addressPromise]);
+
+                updateWeatherUI(weatherData);
+                updateLocationUI(addressData);
+
+            } catch (error) {
+                console.error(error);
+                el("locName").innerText = "Error";
+                el("locSub").innerText = "Data unavailable";
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        // --- APIS ---
+        async function fetchWeather(lat, lng) {
+            const uT = unit === 'imperial' ? 'fahrenheit' : 'celsius';
+            const uS = unit === 'imperial' ? 'mph' : 'kmh';
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,weather_code,relative_humidity_2m,apparent_temperature,pressure_msl,wind_speed_10m,uv_index,visibility&hourly=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&temperature_unit=${uT}&wind_speed_unit=${uS}&timezone=auto`;
+            return (await fetch(url)).json();
+        }
+
+        async function fetchPreciseAddress(lat, lng) {
+            const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
+            const res = await fetch(url, { headers: { 'User-Agent': 'WeatherApp/1.0' } });
+            const data = await res.json();
+            const addr = data.address;
+            // Precise naming logic
+            const mainName = addr.suburb || addr.neighbourhood || addr.city_district || addr.town || addr.city || addr.village || "Unknown Location";
+            const subName = addr.state || addr.country || "";
+            return { main: mainName, sub: subName };
+        }
+
+        // --- UPDATERS ---
+        function updateLocationUI(data) {
+            el("locName").innerText = data.main;
+            el("locSub").innerText = data.sub;
+            el("inputCity").value = `${data.main}, ${data.sub}`;
+        }
+
+        function updateWeatherUI(data) {
+            const cur = data.current;
+            const w = getW(cur.weather_code);
+            const uSym = unit === 'imperial' ? '°F' : '°C';
+            const sSym = unit === 'imperial' ? 'mph' : 'km/h';
+
+            el("curTemp").innerText = Math.round(cur.temperature_2m) + uSym;
+            el("curIcon").innerText = w.i;
+            el("curDesc").innerText = w.t;
+            el("val-feels").innerText = Math.round(cur.apparent_temperature) + "°";
+            el("val-humidity").innerText = cur.relative_humidity_2m + "%";
+            el("val-wind").innerText = Math.round(cur.wind_speed_10m) + " " + sSym;
+            el("val-vis").innerText = (cur.visibility/1000).toFixed(1) + " km";
+            el("val-pressure").innerText = Math.round(cur.pressure_msl) + " hPa";
+            el("val-uv").innerText = cur.uv_index;
+
+            // Hourly
+            const now = new Date().getHours();
+            const start = data.hourly.time.findIndex(t => new Date(t).getHours() === now) || 0;
+            let hHTML = "";
+            for(let i=start; i<start+24; i++) {
+                if(!data.hourly.time[i]) break;
+                const time = i===start ? "Now" : new Date(data.hourly.time[i]).getHours() + ":00";
+                const icon = getW(data.hourly.weather_code[i]).i;
+                hHTML += `<div class="hourly-item"><span>${time}</span><span class="material-symbols-rounded" style="color:var(--primary); font-size:24px">${icon}</span><span style="font-weight:600">${Math.round(data.hourly.temperature_2m[i])}°</span></div>`;
+            }
+            el("hourlyList").innerHTML = hHTML;
+
+            // Daily
+            let dHTML = "";
+            for(let i=0; i<7; i++) {
+                const day = i===0 ? "Today" : new Date(data.daily.time[i]).toLocaleDateString('en-US',{weekday:'short'});
+                const icon = getW(data.daily.weather_code[i]);
+                dHTML += `<div class="daily-row"><span style="width:60px; font-weight:500">${day}</span><div style="flex:1; display:flex; align-items:center; gap:8px; color:#555"><span class="material-symbols-rounded" style="color:var(--primary); font-size:20px">${icon.i}</span>${icon.t}</div><div style="font-weight:500">${Math.round(data.daily.temperature_2m_max[i])}° <span style="color:#aaa; margin-left:6px">${Math.round(data.daily.temperature_2m_min[i])}°</span></div></div>`;
+            }
+            el("dailyList").innerHTML = dHTML;
+        }
+
+        // --- HELPERS ---
+        async function searchCity() {
+            const val = el("inputCity").value.trim();
+            if(!val) return;
+            el("suggestions").style.display='none';
+            const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(val)}&count=1&format=json`);
+            const data = await res.json();
+            if(data.results) {
+                const { latitude, longitude } = data.results[0];
+                handleLocationUpdate(latitude, longitude, false); // false = trigger FlyTo
+            } else { alert("Location not found"); }
+        }
+
+        function getCurrentLocation() {
+            if(!navigator.geolocation) return alert("Not supported");
+            navigator.geolocation.getCurrentPosition(pos => {
+                handleLocationUpdate(pos.coords.latitude, pos.coords.longitude, false);
+            });
+        }
+
+        function initResizer() {
+            const resizer = el("resizer");
+            const sidebar = el("sidebar");
+            let isResizing = false;
+            resizer.addEventListener("mousedown", (e) => { isResizing = true; document.body.classList.add("is-resizing"); });
+            document.addEventListener("mousemove", (e) => {
+                if (!isResizing) return;
+                const newWidth = Math.max(300, Math.min(e.clientX, window.innerWidth * 0.6));
+                sidebar.style.width = `${newWidth}px`;
+                if(map) map.invalidateSize(); 
+            });
+            document.addEventListener("mouseup", () => { isResizing = false; document.body.classList.remove("is-resizing"); });
+        }
+
+        function setLoading(state) {
+            const ids = ["locName", "curTemp", "curDesc", "val-feels", "val-humidity"];
+            ids.forEach(id => el(id).classList.toggle("skeleton", state));
+            el("curIcon").classList.toggle("skeleton-icon", state);
+        }
+
+        function setUnit(u, btn) {
+            if(unit === u) return;
+            unit = u;
+            document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+            btn.classList.add('active');
+            if(marker) { const { lat, lng } = marker.getLatLng(); handleLocationUpdate(lat, lng, true); }
+        }
+
+        function renderPlaceholders() {
+            el("hourlyList").innerHTML = Array(12).fill(`<div class="hourly-item"><span style="color:#ddd">--</span><span class="material-symbols-rounded" style="color:#ddd">circle</span><span>--</span></div>`).join('');
+            el("dailyList").innerHTML = Array(7).fill(`<div class="daily-row"><span>--</span><span>--</span><span>--</span></div>`).join('');
+        }
+        
+        // Autocomplete
+        let debounce;
+        el("inputCity").addEventListener("input", function() {
+            clearTimeout(debounce);
+            const val = this.value.trim();
+            if(val.length<2){el("suggestions").style.display='none'; return;}
+            debounce = setTimeout(async()=>{
+                const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${val}&count=5&format=json`);
+                const d = await res.json();
+                if(d.results) {
+                    el("suggestions").innerHTML = d.results.map(c=>`<div class="suggestion-item" onclick="handleLocationUpdate(${c.latitude},${c.longitude},false); el('suggestions').style.display='none'">${c.name}, <span style="color:#888; font-size:12px">${c.country||''}</span></div>`).join('');
+                    el("suggestions").style.display='block';
+                }
+            }, 300);
+        });
+        document.addEventListener('click', e => { if(!e.target.closest('.search-container')) el('suggestions').style.display='none'; });
+        el("inputCity").addEventListener("keypress", e => { if(e.key==='Enter') searchCity(); });
+
+    </script>
+</body>
+</html>
